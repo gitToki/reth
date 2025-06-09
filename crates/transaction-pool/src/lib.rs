@@ -153,6 +153,7 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 pub use crate::{
+    config::ShardedMempoolConfig,
     blobstore::{BlobStore, BlobStoreError},
     config::{
         LocalTransactionConfig, PoolConfig, PriceBumpConfig, SubPoolLimit, DEFAULT_PRICE_BUMP,
@@ -196,7 +197,7 @@ pub mod pool;
 pub mod validate;
 
 pub mod blobstore;
-mod config;
+pub mod config;
 pub mod identifier;
 mod ordering;
 mod traits;
@@ -240,6 +241,11 @@ where
     /// Get the config the pool was configured with.
     pub fn config(&self) -> &PoolConfig {
         self.inner().config()
+    }
+
+    /// get current sharded mempool configuration
+    pub fn sharded_mempool_config(&self) -> &ShardedMempoolConfig {
+        &self.config().sharded_mempool
     }
 
     /// Returns future that validates all transactions in the given iterator.
@@ -622,6 +628,10 @@ where
         versioned_hashes: &[B256],
     ) -> Result<Option<Vec<BlobAndProofV2>>, BlobStoreError> {
         self.pool.blob_store().get_by_versioned_hashes_v2(versioned_hashes)
+    }
+
+    fn sharded_mempool_config(&self) -> &ShardedMempoolConfig {
+        &self.config().sharded_mempool
     }
 }
 

@@ -14,6 +14,7 @@ use reth_transaction_pool::{
     DEFAULT_TXPOOL_ADDITIONAL_VALIDATION_TASKS, MAX_NEW_PENDING_TXS_NOTIFICATIONS,
     REPLACE_BLOB_PRICE_BUMP, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
     TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT, TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+    ShardedMempoolConfig,
 };
 use std::time::Duration;
 
@@ -194,6 +195,7 @@ impl RethTransactionPoolConfig for TxPoolArgs {
             new_tx_listener_buffer_size: self.new_tx_listener_buffer_size,
             max_new_pending_txs_notifications: self.max_new_pending_txs_notifications,
             max_queued_lifetime: self.max_queued_lifetime,
+            sharded_mempool: Default::default(),
         }
     }
 }

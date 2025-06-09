@@ -36,6 +36,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::mpsc::Receiver;
+use crate::config::ShardedMempoolConfig;
 
 /// The `PeerId` type.
 pub type PeerId = alloy_primitives::B512;
@@ -506,6 +507,8 @@ pub trait TransactionPool: Clone + Debug + Send + Sync {
         &self,
         versioned_hashes: &[B256],
     ) -> Result<Option<Vec<BlobAndProofV2>>, BlobStoreError>;
+
+    fn sharded_mempool_config(&self) -> &ShardedMempoolConfig;
 }
 
 /// Extension for [`TransactionPool`] trait that allows to set the current block info.

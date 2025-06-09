@@ -5,7 +5,7 @@ use crate::{
 };
 use alloy_consensus::constants::EIP4844_TX_TYPE_ID;
 use alloy_eips::eip1559::{ETHEREUM_BLOCK_GAS_LIMIT_30M, MIN_PROTOCOL_BASE_FEE};
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use std::{collections::HashSet, ops::Mul, time::Duration};
 
 /// Guarantees max transactions for one sender, compatible with geth/erigon
@@ -63,6 +63,8 @@ pub struct PoolConfig {
     pub max_new_pending_txs_notifications: usize,
     /// Maximum lifetime for transactions in the pool
     pub max_queued_lifetime: Duration,
+    /// Configuration for horizontally sharded blob mempool
+    pub sharded_mempool: ShardedMempoolConfig,
 }
 
 impl PoolConfig {
@@ -73,6 +75,55 @@ impl PoolConfig {
             self.pending_limit.is_exceeded(pool_size.pending, pool_size.pending_size) ||
             self.basefee_limit.is_exceeded(pool_size.basefee, pool_size.basefee_size) ||
             self.queued_limit.is_exceeded(pool_size.queued, pool_size.queued_size)
+    }
+}
+
+/// sharded mempool
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ShardedMempoolConfig {
+    /// Number of bits to use for sharding (4 bits = 16 shards per défaut)
+    pub shard_bits: u8,
+    /// if the node is configured as a proposer
+    pub is_proposer: bool,
+    /// Node ID for shard calculation
+    pub node_id: Option<B256>,
+}
+
+impl Default for ShardedMempoolConfig {
+    fn default() -> Self {
+        Self {
+            shard_bits: 4, // 16 shards
+            is_proposer: false,
+            node_id: None,
+        }
+    }
+}
+
+impl ShardedMempoolConfig {
+    pub fn new_with_node_id(node_id: B256, is_proposer: bool) -> Self {
+        Self {
+            shard_bits: 4,
+            is_proposer,
+            node_id: Some(node_id),
+        }
+    }
+
+    /// Calculate if we should download the tx based on our shard
+    pub fn should_download_tx(&self, tx_hash: &B256) -> bool {
+        if self.is_proposer {
+            return true; // If proposer we download it
+        }
+        
+        let Some(our_node_id) = self.node_id.as_ref() else {
+            tracing::warn!("Node ID not configured for sharded mempool, downloading all transactions");
+            return true; // Fallback
+        };
+        
+        let mask = (1u8 << self.shard_bits) - 1;
+        let tx_shard = tx_hash.as_slice()[31] & mask;
+        let our_shard = our_node_id.as_slice()[31] & mask;
+        
+        tx_shard == our_shard
     }
 }
 
@@ -93,6 +144,7 @@ impl Default for PoolConfig {
             new_tx_listener_buffer_size: NEW_TX_LISTENER_BUFFER_SIZE,
             max_new_pending_txs_notifications: MAX_NEW_PENDING_TXS_NOTIFICATIONS,
             max_queued_lifetime: MAX_QUEUED_TRANSACTION_LIFETIME,
+            sharded_mempool: Default::default(),
         }
     }
 }

@@ -190,6 +190,18 @@ impl<N: NetworkPrimitives> NetworkHandle<N> {
     pub fn secret_key(&self) -> &SecretKey {
         &self.inner.secret_key
     }
+
+    /// get our node peer ID as B256 for sharding calculation
+    pub fn peer_id_as_b256(&self) -> B256 {
+        let peer_bytes = self.peer_id().as_slice();
+        if peer_bytes.len() >= 32 {
+            B256::from_slice(&peer_bytes[..32])
+        } else {
+            let mut bytes = [0u8; 32];
+            bytes[..peer_bytes.len()].copy_from_slice(peer_bytes);
+            B256::from(bytes)
+        }
+    }
 }
 
 // === API Implementations ===

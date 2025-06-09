@@ -22,6 +22,8 @@ use policy::{NetworkPolicies, TransactionPolicies};
 
 pub(crate) use fetcher::{FetchEvent, TransactionFetcher};
 
+use reth_transaction_pool::config::ShardedMempoolConfig;
+
 use self::constants::{tx_manager::*, DEFAULT_SOFT_LIMIT_BYTE_SIZE_TRANSACTIONS_BROADCAST_MESSAGE};
 use crate::{
     budget::{
@@ -37,6 +39,7 @@ use crate::{
     NetworkHandle, TxTypesCounter,
 };
 use alloy_primitives::{TxHash, B256};
+use alloy_eips::Typed2718;
 use constants::SOFT_LIMIT_COUNT_HASHES_IN_NEW_POOLED_TRANSACTIONS_BROADCAST_MESSAGE;
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use reth_eth_wire::{
@@ -496,6 +499,12 @@ impl<Pool: TransactionPool, N: NetworkPrimitives, PBundle: TransactionPolicies>
         self.report_peer(peer_id, kind);
     }
 
+    /// check if we should download this transaction type 3 (including blobs)
+    fn should_download_type3_tx(&self, tx_hash: &TxHash) -> bool {
+        let config = self.pool.sharded_mempool_config();
+        config.should_download_tx(tx_hash)
+    }
+
     #[inline]
     fn update_poll_metrics(&self, start: Instant, poll_durations: TxManagerPollDurations) {
         let metrics = &self.metrics;
@@ -691,6 +700,24 @@ impl<Pool: TransactionPool, N: NetworkPrimitives, PBundle: TransactionPolicies>
 
         if should_report_peer {
             self.report_peer(peer_id, ReputationChangeKind::BadAnnouncement);
+        }
+
+        // filter by shard assignment for type 3 transactions
+        if is_eth68_message {
+            partially_valid_msg.retain(|tx_hash, metadata_ref_mut| {
+                if let Some((ty_byte, _size)) = *metadata_ref_mut {
+                    // Check if this is a type 3 transaction (0x03)
+                    if ty_byte == 0x03 {
+                        return self.should_download_type3_tx(tx_hash)
+                    }
+                }
+                true // Keep non-type-3 transactions
+            });
+        }
+
+        if partially_valid_msg.is_empty() {
+            // nothing to request after shard filtering
+            return
         }
 
         let mut valid_announcement_data =
@@ -1292,8 +1319,29 @@ where
             return
         }
 
-        let Some(peer) = self.peers.get_mut(&peer_id) else { return };
         let mut transactions = transactions.0;
+
+        let original_count = transactions.len();
+        transactions.retain(|tx| {
+            // For type 3 transactions (including blobs), apply shard filter
+            if tx.ty() == 0x03 {
+                self.should_download_type3_tx(tx.tx_hash())
+            } else {
+                true // Keep non-type-3 transactions
+            }
+        });
+
+        if transactions.len() < original_count {
+            debug!(
+                target: "net::tx", 
+                peer_id = %peer_id,
+                original = original_count,
+                filtered = transactions.len(),
+                "Filtered type 3 transactions based on shard assignment"
+            );
+        }
+
+        let Some(peer) = self.peers.get_mut(&peer_id) else { return };
 
         // mark the transactions as received
         self.transaction_fetcher

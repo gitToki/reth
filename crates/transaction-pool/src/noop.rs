@@ -14,6 +14,7 @@ use crate::{
     PropagatedTransactions, TransactionEvents, TransactionOrigin, TransactionPool,
     TransactionValidationOutcome, TransactionValidator, ValidPoolTransaction,
 };
+use crate::config::ShardedMempoolConfig;
 use alloy_eips::{
     eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M,
     eip4844::{BlobAndProofV1, BlobAndProofV2},
@@ -336,6 +337,15 @@ impl<T: EthPoolTransaction> TransactionPool for NoopTransactionPool<T> {
         _versioned_hashes: &[B256],
     ) -> Result<Option<Vec<BlobAndProofV2>>, BlobStoreError> {
         Ok(None)
+    }
+
+    fn sharded_mempool_config(&self) -> &ShardedMempoolConfig {
+        static DEFAULT_CONFIG: ShardedMempoolConfig = ShardedMempoolConfig {
+            shard_bits: 4,
+            is_proposer: false,
+            node_id: None,
+        };
+        &DEFAULT_CONFIG
     }
 }
 
